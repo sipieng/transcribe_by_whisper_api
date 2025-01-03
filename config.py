@@ -2,7 +2,7 @@ import os
 
 # OpenAI API配置
 OPENAI_CONFIG = {
-    "base_url": "https://yunwu.ai/v1",  # 直接使用固定值
+    "base_url": os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),  # 从环境变量获取，默认值为 yunwu.ai
     "api_key": os.getenv("OPENAI_API_KEY")  # 只有 API key 从环境变量获取
 }
 
