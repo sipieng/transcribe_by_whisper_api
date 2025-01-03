@@ -68,6 +68,38 @@ def load_audio(file_path):
         except:
             raise ValueError(f"不支持的音频格式或缺少解码器: {audio_format}")
 
+def get_audio_info(audio_file_path):
+    """
+    获取音频文件的时长和比特率
+    
+    Args:
+        audio_file_path: 音频文件路径
+    
+    Returns:
+        tuple: (duration, bitrate)，分别为时长（秒）和比特率（bps）
+    """
+    print("正在获取音频信息...")
+    probe_cmd = [
+        "ffprobe",
+        "-v", "error",
+        "-select_streams", "a:0",
+        "-show_entries", "format=duration,bit_rate",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        audio_file_path
+    ]
+    result = subprocess.check_output(probe_cmd).decode().strip().split('\n')
+    duration = float(result[0])
+    # 某些音频可能没有比特率信息，此时使用估算值
+    try:
+        bitrate = int(result[1])
+    except (IndexError, ValueError):
+        file_size = os.path.getsize(audio_file_path)
+        bitrate = int((file_size * 8) / duration)  # 估算比特率
+    
+    print(f"音频总时长: {duration:.2f}秒")
+    print(f"音频比特率: {bitrate/1000:.0f}kbps")
+    return duration, bitrate
+
 def split_audio(audio_file_path):
     """
     使用ffmpeg无损分割音频文件
@@ -83,16 +115,8 @@ def split_audio(audio_file_path):
     os.makedirs(OUTPUT_CONFIG["segments_dir"], exist_ok=True)
     os.makedirs(OUTPUT_CONFIG["srt_dir"], exist_ok=True)
     
-    # 获取音频总时长（秒）
-    print("正在获取音频时长...")
-    probe_cmd = [
-        "ffprobe",  # 使用ffprobe工具
-        "-v", "error",
-        "-show_entries", "format=duration",  # 获取音频时长
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        audio_file_path
-    ]
-    duration = float(subprocess.check_output(probe_cmd).decode().strip())
+    # 获取音频时长
+    duration, _ = get_audio_info(audio_file_path)
     
     # 计算需要分割的段数
     segment_duration = AUDIO_CONFIG["split_interval"] / 1000  # 转换为秒
@@ -203,9 +227,6 @@ def convert_to_mp3(input_file):
 def transcribe_audio(audio_file_path):
     """
     转录音频文件为SRT字幕
-    
-    Args:
-        audio_file_path: 音频文件路径
     """
     # 首先清理之前的输出文件
     clean_output()
@@ -216,17 +237,55 @@ def transcribe_audio(audio_file_path):
     file_size = os.path.getsize(audio_file_path)
     print(f"文件大小: {file_size/1024/1024:.2f}MB")
     
-    # 如果文件大于25MB，先尝试转换为低码率MP3
+    # 如果文件大于25MB，检查比特率
     if file_size > AUDIO_CONFIG["max_file_size"]:
         print(f"文件大小超过25MB，需要进行处理...")
-        converted_file = convert_to_mp3(audio_file_path)
-        converted_size = os.path.getsize(converted_file)
-        print(f"转换后文件大小: {converted_size/1024/1024:.2f}MB")
+        _, bitrate = get_audio_info(audio_file_path)
         
-        # 如果转换后的文件仍然超过25MB，则进行分割
-        if converted_size > AUDIO_CONFIG["max_file_size"]:
-            print(f"转换后的文件仍超过25MB，需要进行分割...")
-            segments = split_audio(converted_file)
+        # 如果比特率大于128kbps，先转换
+        if bitrate > 128000:
+            print("音频比特率大于128kbps，进行转换...")
+            converted_file = convert_to_mp3(audio_file_path)
+            converted_size = os.path.getsize(converted_file)
+            print(f"转换后文件大小: {converted_size/1024/1024:.2f}MB")
+            
+            # 如果转换后的文件仍然超过25MB，则进行分割
+            if converted_size > AUDIO_CONFIG["max_file_size"]:
+                print(f"转换后的文件仍超过25MB，需要进行分割...")
+                segments = split_audio(converted_file)
+                all_srt_content = ""
+                
+                # 转录每个分段
+                for i, segment_path in enumerate(segments):
+                    print(f"\n正在转录第{i+1}/{len(segments)}段...")
+                    with open(segment_path, "rb") as audio_file:
+                        transcription = client.audio.transcriptions.create(
+                            model="whisper-1",
+                            file=audio_file,
+                            response_format="srt",
+                            language=AUDIO_CONFIG["language"]
+                        )
+                        
+                        # 调整时间戳
+                        time_offset = i * AUDIO_CONFIG["split_interval"]
+                        adjusted_srt = adjust_srt_timestamps(transcription, time_offset)
+                        
+                        # 保存分段SRT
+                        segment_srt_path = f"{OUTPUT_CONFIG['srt_dir']}/segment_{i}.srt"
+                        with open(segment_srt_path, "w", encoding="utf-8") as f:
+                            f.write(adjusted_srt)
+                        print(f"第{i+1}段转录完成并保存")
+                        
+                        all_srt_content += adjusted_srt + "\n"
+                
+                # 保存最终合并的SRT文件
+                with open(OUTPUT_CONFIG["final_output"], "w", encoding="utf-8") as f:
+                    f.write(all_srt_content)
+                print(f"\n所有分段已合并到: {OUTPUT_CONFIG['final_output']}")
+        else:
+            # 比特率低于128kbps，直接分割原文件
+            print("音频比特率低于128kbps，直接进行分割...")
+            segments = split_audio(audio_file_path)
             all_srt_content = ""
             
             # 转录每个分段
@@ -256,19 +315,6 @@ def transcribe_audio(audio_file_path):
             with open(OUTPUT_CONFIG["final_output"], "w", encoding="utf-8") as f:
                 f.write(all_srt_content)
             print(f"\n所有分段已合并到: {OUTPUT_CONFIG['final_output']}")
-        else:
-            # 转换后的文件小于25MB，直接转录
-            print("转换后的文件小于25MB，直接进行转录...")
-            with open(converted_file, "rb") as audio_file:
-                transcription = client.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=audio_file,
-                    response_format="srt",
-                    language=AUDIO_CONFIG["language"]
-                )
-                with open(OUTPUT_CONFIG["final_output"], "w", encoding="utf-8") as f:
-                    f.write(transcription)
-                print(f"转录完成，已保存到: {OUTPUT_CONFIG['final_output']}")
     else:
         # 原文件小于25MB，直接转录
         print("文件小于25MB，直接进行转录...")
@@ -284,17 +330,18 @@ def transcribe_audio(audio_file_path):
             print(f"转录完成，已保存到: {OUTPUT_CONFIG['final_output']}")
     
     print("=== 音频转录完成 ===\n")
+    
+    # 询问是否清理临时文件
+    clean = input("是否清理临时文件？(y/n): ").lower().strip()
+    if clean == 'y':
+        clean_output()  # 清理所有临时文件
 
 def clean_output():
     """
-    清理所有输出文件和目录
-    包括：
-    1. segments 目录下的所有音频文件
-    2. srt_segments 目录下的所有SRT文件
-    3. 转换后的MP3文件
-    4. 最终的SRT文件
+    清理临时文件和目录
+    注意：最终的转录文件(transcription.srt)不会被删除
     """
-    print("\n=== 清理输出文件 ===")
+    print("\n=== 清理临时文件 ===")
     
     # 清理目录中的文件
     for dir_path in [OUTPUT_CONFIG["segments_dir"], OUTPUT_CONFIG["srt_dir"]]:
@@ -313,21 +360,19 @@ def clean_output():
             except PermissionError:
                 print(f"删除目录失败（目录可能被占用）: {dir_path}")
             except OSError:
-                # 目录不为空，但这种情况应该很少发生
                 print(f"删除目录失败（目录不为空）: {dir_path}")
     
-    # 清理单个文件
-    for file_path in [OUTPUT_CONFIG["converted_audio"], OUTPUT_CONFIG["final_output"]]:
-        if os.path.exists(file_path):
-            try:
-                os.remove(file_path)
-            except PermissionError:
-                print(f"删除文件失败（文件可能被占用）: {file_path}")
+    # 清理转换后的MP3文件
+    if os.path.exists(OUTPUT_CONFIG["converted_audio"]):
+        try:
+            os.remove(OUTPUT_CONFIG["converted_audio"])
+        except PermissionError:
+            print(f"删除文件失败（文件可能被占用）: {OUTPUT_CONFIG['converted_audio']}")
     
     print("=== 清理完成 ===\n")
 
 
 if __name__ == "__main__":
 
-    audio_file_path = r"C:\Users\mike.shen\Desktop\The_Medici_1.m4a"
+    audio_file_path = r"C:\Users\mike.shen\Desktop\tmp\beowulf.m4a"
     transcribe_audio(audio_file_path)
