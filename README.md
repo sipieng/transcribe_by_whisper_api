@@ -24,30 +24,32 @@
 
 ## 配置说明
 
-1. 创建`.env`文件并配置OpenAI API密钥:
+1. 创建`.env`文件并配置必要的环境变量:
 ```
 OPENAI_API_KEY=your_api_key_here
+OPENAI_BASE_URL=https://api.openai.com/v1  # 可选，默认为 OpenAI 官方 API
 ```
 
 2. 在`config.py`中配置相关参数:
 ```python
 OPENAI_CONFIG = {
-    "base_url": "https://api.openai.com/v1",
+    "base_url": os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),  # 从环境变量获取
     "api_key": os.getenv("OPENAI_API_KEY")
 }
 
 AUDIO_CONFIG = {
-    "max_file_size": 25 * 1024 * 1024,  # 25MB
-    "mp3_bitrate": "64k",               # 转换后的MP3比特率
-    "split_interval": 600000,           # 分割间隔(毫秒)
-    "language": "zh"                    # 转录语言
+    "split_interval": 30 * 60 * 1000,    # 30分钟，单位为毫秒
+    "max_file_size": 25 * 1024 * 1024,   # 25MB，单位为字节
+    "language": "en",                     # 语言设置：中文为"zh"，英文为"en"
+    "export_format": "mp3",               # 分段后的音频导出格式
+    "mp3_bitrate": "96k"                 # MP3转换的目标比特率
 }
 
 OUTPUT_CONFIG = {
-    "segments_dir": "segments",         # 音频分段目录
-    "srt_dir": "srt_segments",         # 字幕分段目录
-    "converted_audio": "converted.mp3", # 转换后的音频文件
-    "final_output": "transcription.srt" # 最终输出的字幕文件
+    "segments_dir": "segments",           # 音频分段目录
+    "srt_dir": "srt_segments",           # 字幕分段目录
+    "final_output": "transcription.srt",  # 最终输出的字幕文件
+    "converted_audio": "converted.mp3"    # 转换后的音频文件
 }
 ```
 
