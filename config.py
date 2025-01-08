@@ -19,8 +19,8 @@ AUDIO_CONFIG = {
 
 # 输出配置
 OUTPUT_CONFIG = {
-    "segments_dir": "segments",  # 音频分段存储目录
+    "segments_dir": "audio_segments",  # 音频分段存储目录
     "srt_dir": "srt_segments",   # SRT分段存储目录
-    "final_output": "transcription.srt",  # 最终合并的SRT文件
+    "transcripts_dir": "transcripts",  # 转录文本存放目录
     "converted_audio": "converted.mp3"  # 转换后的MP3文件
 } 

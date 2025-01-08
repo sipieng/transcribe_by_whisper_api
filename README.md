@@ -1,17 +1,32 @@
-# 音频转录工具
+# Whisper Audio Transcription Tool
 
-这是一个基于OpenAI Whisper API的音频转录工具，可以将音频文件转换为SRT格式的字幕文件。
+这是一个使用 OpenAI Whisper API 将音频文件转录为 SRT 字幕文件的工具。
 
-## 主要功能
+## 功能特点
 
-- 支持多种音频格式（mp3, m4a, wav等）
-- 自动处理大于25MB的音频文件:
-  - 检测音频比特率
-  - 对高比特率文件(>128kbps)自动转换为低码率MP3
-  - 对大文件自动进行无损分割
-- 使用OpenAI的Whisper API进行语音转录
-- 自动处理时间戳，确保分段转录后的字幕时间正确
-- 支持清理临时文件，但保留最终转录结果
+1. 支持多种音频格式（mp3, m4a, wav等）
+2. 自动处理大于25MB的音频文件
+   - 先尝试转换为低码率MP3（默认96kbps）
+   - 如果仍然过大，则进行无损分割
+3. 支持批量处理
+   - 可以处理单个音频文件
+   - 可以处理整个目录下的所有支持格式的音频文件
+4. 自动处理时间戳
+   - 确保分段转录后的字幕时间正确
+   - 自动合并多个分段的字幕文件
+5. 智能清理临时文件
+   - 自动清理音频分段文件
+   - 自动清理中间过程生成的SRT文件
+   - 自动清理转换后的MP3文件
+
+## 配置说明
+
+### 环境变量配置（.env文件）
+
+```
+OPENAI_API_KEY=your_api_key_here
+OPENAI_BASE_URL=https://api.openai.com/v1  # 可选，默认为 OpenAI 官方 API
+```
 
 ## 环境要求
 
@@ -82,7 +97,7 @@ transcribe_audio(audio_file_path)
 - `transcription.srt`: 最终的字幕文件
 - `segments/`: 音频分段临时目录
 - `srt_segments/`: 字幕分段临时目录
-- `converted.mp3`: 转换后的临时音频文件
+- `converted.mp3`: 转换后的临时音频文件，转换完成后删除
 
 ## 注意事项
 
