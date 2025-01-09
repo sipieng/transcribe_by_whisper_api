@@ -1,6 +1,6 @@
 # Whisper Audio Transcription Tool
 
-这是一个使用 OpenAI Whisper API 将音频文件转录为 SRT 字幕文件的工具。
+这是一个使用 OpenAI Whisper API 将音频文件转录为字幕或文本文件的工具。
 
 ## 功能特点
 
@@ -11,12 +11,12 @@
 3. 支持批量处理
    - 可以处理单个音频文件
    - 可以处理整个目录下的所有支持格式的音频文件
-4. 自动处理时间戳
+4. 自动处理时间戳（适用于字幕格式）
    - 确保分段转录后的字幕时间正确
    - 自动合并多个分段的字幕文件
 5. 智能清理临时文件
    - 自动清理音频分段文件
-   - 自动清理中间过程生成的SRT文件
+   - 自动清理中间过程生成的转录文件
    - 自动清理转换后的MP3文件
 
 ## 配置说明
@@ -53,18 +53,19 @@ OPENAI_CONFIG = {
 }
 
 AUDIO_CONFIG = {
-    "split_interval": 30 * 60 * 1000,    # 30分钟，单位为毫秒
-    "max_file_size": 25 * 1024 * 1024,   # 25MB，单位为字节
+    "split_interval": 30 * 60 * 1000,     # 30分钟，单位为毫秒
+    "max_file_size": 25 * 1024 * 1024,    # 25MB，单位为字节
     "language": "en",                     # 语言设置：中文为"zh"，英文为"en"
     "export_format": "mp3",               # 分段后的音频导出格式
-    "mp3_bitrate": "96k"                 # MP3转换的目标比特率
+    "mp3_bitrate": "96k",                 # MP3转换的目标比特率
+    "response_format": "text"             # 转录格式：srt, text, json, verbose_json, vtt
 }
 
 OUTPUT_CONFIG = {
-    "segments_dir": "audio_segments",   # 音频分段存储目录
-    "srt_dir": "srt_segments",          # SRT分段存储目录
-    "transcripts_dir": "transcripts",   # 转录文本存放目录
-    "converted_audio": "converted.mp3"  # 转换后的MP3文件，转录完成后自动清除
+    "audio_chunks_dir": "audio_chunks",   # 音频分段存储目录
+    "trans_chunks_dir": "trans_chunks",   # 转录分段临时存储目录
+    "transcripts_dir": "transcripts",     # 转录文本存放目录
+    "converted_audio": "converted.mp3"    # 转换后的MP3文件，转录完成后自动清除
 } 
 ```
 
@@ -88,18 +89,20 @@ transcribe_audio(audio_file_path)
    - 如果>128kbps，转换为低码率MP3
    - 如果文件仍>25MB，进行分段处理
 3. 使用Whisper API进行转录
-4. 对分段转录结果进行时间戳调整
-5. 合并所有分段为最终SRT文件
+4. 对分段转录结果进行时间戳调整（仅适用于字幕格式）
+5. 合并所有分段为最终文件
 6. 清理临时文件
 
 ## 输出文件
 
-- `transcripts/*.srt`: 转录完成的字幕文件储存在 transcripts 目录下
-- `audio_segments/`: 音频分段临时目录
-- `srt_segments/`: 字幕分段临时目录
+- `transcripts/*`: 转录完成的文件储存在 transcripts 目录下
+  - 文件扩展名根据 response_format 自动设置（.srt/.txt/.json/.vtt）
+- `audio_chunks/`: 音频分段临时目录
+- `trans_chunks/`: 转录分段临时目录
 - `converted.mp3`: 转换后的临时音频文件，转换完成后删除
 
 ## 注意事项
 
 - 确保系统已正确安装FFmpeg
 - 请确保OpenAI API密钥配置正确
+- 字幕时间戳调整功能仅在使用 srt 或 vtt 格式时有效

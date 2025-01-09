@@ -15,12 +15,13 @@ AUDIO_CONFIG = {
     "language": "en",                   # 音频语言，中文为"zh"
     "export_format": "mp3",             # 分段后的音频导出格式
     "mp3_bitrate": "96k",               # 大于128kbps的MP3转换的目标比特率
+    "response_format": "text"           # Whisper API的响应格式，可选值：srt, text, json, verbose_json, vtt
 }
 
 # 输出配置
 OUTPUT_CONFIG = {
-    "segments_dir": "audio_segments",   # 音频分段存储目录
-    "srt_dir": "srt_segments",          # SRT分段存储目录
-    "transcripts_dir": "transcripts",   # 转录文本存放目录
-    "converted_audio": "converted.mp3"  # 转换后的MP3文件，转录完成后自动清除
+    "audio_chunks_dir": "audio_chunks",  # 音频分段存储目录
+    "trans_chunks_dir": "trans_chunks",  # 转录分段临时存储目录
+    "transcripts_dir": "transcripts",    # 转录文本存放目录
+    "converted_audio": "converted.mp3"   # 转换后的MP3文件，转录完成后自动清除
 } 

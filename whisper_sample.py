@@ -1,13 +1,14 @@
 """
 音频转录工具
 
-这个脚本用于将音频文件转录为SRT字幕文件。主要功能包括：
+这个脚本用于将音频文件转录为字幕或文本文件。主要功能包括：
 1. 支持多种音频格式（mp3, m4a, wav等）
 2. 自动处理大于25MB的音频文件
    - 先尝试转换为低码率MP3
    - 如果仍然过大，则进行无损分割
 3. 使用OpenAI的Whisper API进行转录
-4. 自动处理时间戳，确保分段转录后的字幕时间正确
+4. 自动处理时间戳（适用于字幕格式）
+5. 自动清理临时文件
 """
 
 from dotenv import load_dotenv
@@ -113,8 +114,8 @@ def split_audio(audio_file_path):
     """
     print("\n=== 开始音频分割 ===")
     # 确保输出目录存在
-    os.makedirs(OUTPUT_CONFIG["segments_dir"], exist_ok=True)
-    os.makedirs(OUTPUT_CONFIG["srt_dir"], exist_ok=True)
+    os.makedirs(OUTPUT_CONFIG["audio_chunks_dir"], exist_ok=True)
+    os.makedirs(OUTPUT_CONFIG["trans_chunks_dir"], exist_ok=True)
     
     # 获取音频时长
     duration, _ = get_audio_info(audio_file_path)
@@ -129,7 +130,7 @@ def split_audio(audio_file_path):
     print(f"预计分割为{total_segments}段")
     
     for i in range(0, int(duration), int(segment_duration)):
-        segment_path = f"{OUTPUT_CONFIG['segments_dir']}/segment_{i//int(segment_duration)}.mp3"
+        segment_path = f"{OUTPUT_CONFIG['audio_chunks_dir']}/segment_{i//int(segment_duration)}.mp3"
         
         # 构建ffmpeg命令
         cmd = [
@@ -153,32 +154,47 @@ def split_audio(audio_file_path):
     print("=== 音频分割完成 ===\n")
     return segments
 
-
-def adjust_srt_timestamps(srt_content, time_offset):
+def add_time(time_str, offset_ms):
     """
-    调整SRT文件的时间戳
+    为时间字符串添加偏移量
     
     Args:
-        srt_content: SRT文件内容
+        time_str: 时间字符串，格式为 "HH:MM:SS,mmm"
+        offset_ms: 要添加的时间偏移量（毫秒）
+    
+    Returns:
+        str: 调整后的时间字符串，格式与输入相同
+    """
+    # 将时间字符串转换为毫秒
+    h, m, s = time_str.split(':')
+    s, ms = s.split(',')
+    total_ms = int(h) * 3600000 + int(m) * 60000 + int(s) * 1000 + int(ms)
+    # 添加偏移
+    total_ms += offset_ms
+    # 转换回时间格式
+    h = total_ms // 3600000
+    m = (total_ms % 3600000) // 60000
+    s = (total_ms % 60000) // 1000
+    ms = total_ms % 1000
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+def adjust_timestamps(content, time_offset):
+    """
+    调整字幕文件的时间戳
+    
+    Args:
+        content: 字幕文件内容
         time_offset: 时间偏移量（毫秒）
     
     Returns:
-        str: 调整后的SRT内容
+        str: 调整后的字幕内容
+    
+    Note:
+        目前支持 SRT 和 VTT 格式的时间戳调整
     """
-    def add_time(time_str, offset_ms):
-        # 将时间字符串转换为毫秒
-        h, m, s = time_str.split(':')
-        s, ms = s.split(',')
-        total_ms = int(h) * 3600000 + int(m) * 60000 + int(s) * 1000 + int(ms)
-        # 添加偏移
-        total_ms += offset_ms
-        # 转换回时间格式
-        h = total_ms // 3600000
-        m = (total_ms % 3600000) // 60000
-        s = (total_ms % 60000) // 1000
-        ms = total_ms % 1000
-        return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
-
+    if AUDIO_CONFIG["response_format"] not in ["srt", "vtt"]:
+        return content
+        
     # 使用正则表达式匹配时间戳行
     pattern = r'(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})'
     
@@ -189,8 +205,7 @@ def adjust_srt_timestamps(srt_content, time_offset):
         new_end = add_time(end_time, time_offset)
         return f"{new_start} --> {new_end}"
 
-    return re.sub(pattern, replace_timestamps, srt_content)
-
+    return re.sub(pattern, replace_timestamps, content)
 
 def convert_to_mp3(input_file):
     """
@@ -226,18 +241,12 @@ def convert_to_mp3(input_file):
     return output_path
 
 def clean_output():
-    """
-    清理所有输出文件和目录
-    包括：
-    1. segments 目录下的所有音频文件
-    2. srt_segments 目录下的所有SRT文件
-    3. 转换后的MP3文件
-    """
+    """清理所有输出文件和目录"""
     print("\n=== 清理输出文件 ===")
     
     # 清理目录中的文件
-    for dir_path in [OUTPUT_CONFIG["segments_dir"], 
-                    OUTPUT_CONFIG["srt_dir"]]:  # 不清理 transcripts 目录
+    for dir_path in [OUTPUT_CONFIG["audio_chunks_dir"], 
+                    OUTPUT_CONFIG["trans_chunks_dir"]]:  # 使用新的目录名
         if os.path.exists(dir_path):
             # 删除目录中的文件
             for file in os.listdir(dir_path):
@@ -304,13 +313,36 @@ def get_supported_audio_files(path):
                 audio_files.append(os.path.join(root, file))
     return sorted(audio_files)  # 排序确保处理顺序一致
 
-def transcribe_audio(audio_path):
+def get_output_extension():
     """
-    转录音频文件为SRT字幕
+    根据配置的响应格式返回对应的文件扩展名
+    
+    Returns:
+        str: 文件扩展名（包含点号）
+    """
+    format_extensions = {
+        "text": ".txt",
+        "srt": ".srt",
+        "json": ".json",
+        "verbose_json": ".json",
+        "vtt": ".vtt"
+    }
+    return format_extensions.get(AUDIO_CONFIG["response_format"], ".txt")  # 默认使用 .txt
+
+def needs_timestamp_adjustment(response_format):
+    """
+    检查指定的响应格式是否需要时间戳调整
     
     Args:
-        audio_path: 音频文件或目录路径
+        response_format: Whisper API的响应格式
+    
+    Returns:
+        bool: 如果需要调整时间戳返回True，否则返回False
     """
+    return response_format in ["srt", "vtt"]
+
+def transcribe_audio(audio_path):
+    """转录音频文件"""
     try:
         # 开始处理前清理所有临时文件
         clean_output()
@@ -322,8 +354,8 @@ def transcribe_audio(audio_path):
             return
         
         # 确保所有必要的目录都存在
-        for dir_path in [OUTPUT_CONFIG["segments_dir"], 
-                        OUTPUT_CONFIG["srt_dir"],
+        for dir_path in [OUTPUT_CONFIG["audio_chunks_dir"], 
+                        OUTPUT_CONFIG["trans_chunks_dir"],
                         OUTPUT_CONFIG["transcripts_dir"]]:
             os.makedirs(dir_path, exist_ok=True)
         
@@ -332,8 +364,8 @@ def transcribe_audio(audio_path):
         for index, audio_file in enumerate(audio_files, 1):
             print(f"\n=== 处理文件 {index}/{total_files}: {os.path.basename(audio_file)} ===")
             
-            # 设置输出文件路径
-            output_filename = f"{os.path.splitext(os.path.basename(audio_file))[0]}.srt"
+            # 设置输出文件路径，使用动态扩展名
+            output_filename = f"{os.path.splitext(os.path.basename(audio_file))[0]}{get_output_extension()}"
             output_path = os.path.join(OUTPUT_CONFIG["transcripts_dir"], output_filename)
             
             # 处理单个文件
@@ -351,7 +383,7 @@ def transcribe_audio(audio_path):
                     if converted_size > AUDIO_CONFIG["max_file_size"]:
                         print(f"转换后的文件仍超过25MB，需要进行分割...")
                         segments = split_audio(converted_file)
-                        all_srt_content = ""
+                        all_content = ""
                         
                         # 转录每个分段
                         for i, segment_path in enumerate(segments):
@@ -360,25 +392,28 @@ def transcribe_audio(audio_path):
                                 transcription = client.audio.transcriptions.create(
                                     model="whisper-1",
                                     file=audio_file_obj,
-                                    response_format="srt",
+                                    response_format=AUDIO_CONFIG["response_format"],
                                     language=AUDIO_CONFIG["language"]
                                 )
                                 
-                                # 调整时间戳
-                                time_offset = i * AUDIO_CONFIG["split_interval"]
-                                adjusted_srt = adjust_srt_timestamps(transcription, time_offset)
+                                # 只有在需要时才调整时间戳
+                                if needs_timestamp_adjustment(AUDIO_CONFIG["response_format"]):
+                                    transcription = adjust_timestamps(transcription, i * AUDIO_CONFIG["split_interval"])
                                 
-                                # 保存分段SRT
-                                segment_srt_path = f"{OUTPUT_CONFIG['srt_dir']}/segment_{i}.srt"
-                                with open(segment_srt_path, "w", encoding="utf-8") as f:
-                                    f.write(adjusted_srt)
+                                # 保存分段文件
+                                segment_output_path = f"{OUTPUT_CONFIG['trans_chunks_dir']}/segment_{i}{get_output_extension()}"
+                                with open(segment_output_path, "w", encoding="utf-8") as f:
+                                    f.write(transcription)
                                 print(f"第{i+1}段转录完成并保存")
                                 
-                                all_srt_content += adjusted_srt + "\n"
+                                # 对于非字幕格式，添加分段标记
+                                if not needs_timestamp_adjustment(AUDIO_CONFIG["response_format"]):
+                                    all_content += f"\n=== 第{i+1}段 ===\n\n"
+                                all_content += transcription + "\n"
                         
-                        # 保存最终合并的SRT文件
+                        # 保存最终合并的文件
                         with open(output_path, "w", encoding="utf-8") as f:
-                            f.write(all_srt_content)
+                            f.write(all_content)
                         print(f"\n所有分段已合并到: {output_path}")
                     else:
                         # 转换后的文件小于25MB，直接转录
@@ -387,7 +422,7 @@ def transcribe_audio(audio_path):
                             transcription = client.audio.transcriptions.create(
                                 model="whisper-1",
                                 file=audio_file_obj,
-                                response_format="srt",
+                                response_format=AUDIO_CONFIG["response_format"],
                                 language=AUDIO_CONFIG["language"]
                             )
                             with open(output_path, "w", encoding="utf-8") as f:
@@ -400,7 +435,7 @@ def transcribe_audio(audio_path):
                         transcription = client.audio.transcriptions.create(
                             model="whisper-1",
                             file=audio_file_obj,
-                            response_format="srt",
+                            response_format=AUDIO_CONFIG["response_format"],
                             language=AUDIO_CONFIG["language"]
                         )
                         with open(output_path, "w", encoding="utf-8") as f:
@@ -424,5 +459,5 @@ def transcribe_audio(audio_path):
 if __name__ == "__main__":
 
     # 示例用法
-    input_path = r"C:\Users\mike.shen\Desktop\tmp\bbc\BBC - Money (Abridged) - David McWilliams"  # 可以是单个文件或目录
+    input_path = r"C:\audiobooks"  # 可以是单个文件或目录
     transcribe_audio(input_path)
