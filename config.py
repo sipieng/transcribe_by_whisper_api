@@ -1,6 +1,23 @@
 import os
 
-# OpenAI API配置
+# AI配置（用于处理text格式）
+AI_CONFIG = {
+    "provider": "anthropic",  # AI服务提供商
+    "base_url": os.getenv("AI_BASE_URL", "https://api.anthropic.com"),
+    "api_key": os.getenv("AI_API_KEY"),
+    "model": "claude-3-5-sonnet-20241022",  # 使用的模型名称
+    "system_prompt": """
+在这个对话中，我会提供一些英文。请你：
+1. 通读并理解我提供的英文文本；
+2. 根据内容逻辑进行合理分段；
+3. 不要给每个分段添加标题或者解释，直接输出分段内容；
+4. 保持原文不变，不要进行翻译，不要进行任何增加、删除或者修改，包括你认为可能是文章来源的那部分；
+5. 如果发现可能有拼写错误或者使用错误的用词，请指出并说明修改建议及依据。
+英文内容如下：
+"""
+}
+
+# OpenAI Whisper API配置
 OPENAI_CONFIG = {
     "base_url": os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),  # 从环境变量获取，默认值为 OpenAI
     "api_key": os.getenv("OPENAI_API_KEY")

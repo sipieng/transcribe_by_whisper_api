@@ -19,6 +19,7 @@ from pydub import AudioSegment
 import os
 import re
 from config import OPENAI_CONFIG, AUDIO_CONFIG, OUTPUT_CONFIG
+from text_processor import process_text
 import subprocess
 import time
 
@@ -396,6 +397,10 @@ def transcribe_audio(audio_path):
                                     language=AUDIO_CONFIG["language"]
                                 )
                                 
+                                # 如果是文本格式，使用AI处理
+                                if AUDIO_CONFIG["response_format"] == "text":
+                                    transcription = process_text(transcription)
+                                
                                 # 只有在需要时才调整时间戳
                                 if needs_timestamp_adjustment(AUDIO_CONFIG["response_format"]):
                                     transcription = adjust_timestamps(transcription, i * AUDIO_CONFIG["split_interval"])
@@ -425,6 +430,11 @@ def transcribe_audio(audio_path):
                                 response_format=AUDIO_CONFIG["response_format"],
                                 language=AUDIO_CONFIG["language"]
                             )
+                            
+                            # 如果是文本格式，使用AI处理
+                            if AUDIO_CONFIG["response_format"] == "text":
+                                transcription = process_text(transcription)
+                            
                             with open(output_path, "w", encoding="utf-8") as f:
                                 f.write(transcription)
                             print(f"转录完成，已保存到: {output_path}")
@@ -438,6 +448,11 @@ def transcribe_audio(audio_path):
                             response_format=AUDIO_CONFIG["response_format"],
                             language=AUDIO_CONFIG["language"]
                         )
+                        
+                        # 如果是文本格式，使用AI处理
+                        if AUDIO_CONFIG["response_format"] == "text":
+                            transcription = process_text(transcription)
+                        
                         with open(output_path, "w", encoding="utf-8") as f:
                             f.write(transcription)
                         print(f"转录完成，已保存到: {output_path}")
@@ -459,5 +474,5 @@ def transcribe_audio(audio_path):
 if __name__ == "__main__":
 
     # 示例用法
-    input_path = r"C:\audiobooks"  # 可以是单个文件或目录
+    input_path = r"C:\test.m4a"  # 可以是单个文件或目录
     transcribe_audio(input_path)

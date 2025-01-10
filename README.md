@@ -1,6 +1,6 @@
 # Whisper Audio Transcription Tool
 
-这是一个使用 OpenAI Whisper API 将音频文件转录为字幕或文本文件的工具。
+这是一个使用 Whisper API 将音频文件转录为字幕或文本文件的工具。
 
 ## 功能特点
 
@@ -14,7 +14,11 @@
 4. 自动处理时间戳（适用于字幕格式）
    - 确保分段转录后的字幕时间正确
    - 自动合并多个分段的字幕文件
-5. 智能清理临时文件
+5. 智能文本处理（针对输出为text格式）
+   - 支持对转录文本进行智能分段
+   - 自动检查拼写和用词问题
+   - 保持原文完整性
+6. 智能清理临时文件
    - 自动清理音频分段文件
    - 自动清理中间过程生成的转录文件
    - 自动清理转换后的MP3文件
@@ -22,87 +26,94 @@
 ## 配置说明
 
 ### 环境变量配置（.env文件）
-
 ```
-OPENAI_API_KEY=your_api_key_here
-OPENAI_BASE_URL=https://api.openai.com/v1  # 可选，默认为 OpenAI 官方 API
-```
+# Whisper API配置
+OPENAI_BASE_URL=your_whisper_api_url
+OPENAI_API_KEY=your_whisper_api_key
 
-## 环境要求
-
-- Python 3.x
-- FFmpeg（用于音频处理）
-- 以下Python包:
-  ```bash
-  pip install openai python-dotenv pydub
-  ```
-
-## 配置说明
-
-1. 创建`.env`文件并配置必要的环境变量:
-```
-OPENAI_API_KEY=your_api_key_here
-OPENAI_BASE_URL=https://api.openai.com/v1  # 可选，默认为 OpenAI 官方 API
+# AI服务配置（用于处理text格式）
+AI_BASE_URL=your_ai_service_url
+AI_API_KEY=your_ai_service_key
 ```
 
-2. 在`config.py`中配置相关参数:
+### AI配置（config.py）
 ```python
-OPENAI_CONFIG = {
-    "base_url": os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),  # 从环境变量获取
-    "api_key": os.getenv("OPENAI_API_KEY")
+AI_CONFIG = {
+    "provider": "your_provider",  # AI服务提供商
+    "base_url": os.getenv("AI_BASE_URL"),
+    "api_key": os.getenv("AI_API_KEY"),
+    "model": "your_model_name",
+    "system_prompt": """你的系统提示词"""
 }
-
-AUDIO_CONFIG = {
-    "split_interval": 30 * 60 * 1000,     # 30分钟，单位为毫秒
-    "max_file_size": 25 * 1024 * 1024,    # 25MB，单位为字节
-    "language": "en",                     # 语言设置：中文为"zh"，英文为"en"
-    "export_format": "mp3",               # 分段后的音频导出格式
-    "mp3_bitrate": "96k",                 # MP3转换的目标比特率
-    "response_format": "text"             # 转录格式：srt, text, json, verbose_json, vtt
-}
-
-OUTPUT_CONFIG = {
-    "audio_chunks_dir": "audio_chunks",   # 音频分段存储目录
-    "trans_chunks_dir": "trans_chunks",   # 转录分段临时存储目录
-    "transcripts_dir": "transcripts",     # 转录文本存放目录
-    "converted_audio": "converted.mp3"    # 转换后的MP3文件，转录完成后自动清除
-} 
 ```
 
-## 使用方法
+### 音频处理配置（config.py）
+```python
+AUDIO_CONFIG = {
+    "split_interval": 30 * 60 * 1000,  # 30分钟
+    "max_file_size": 25 * 1024 * 1024, # 25MB
+    "language": "en",                  # 语言设置
+    "export_format": "mp3",            # 分段格式
+    "mp3_bitrate": "96k",              # 比特率
+    "response_format": "text"          # 输出格式
+}
+```
 
+### 输出配置（config.py）
+```python
+OUTPUT_CONFIG = {
+    "audio_chunks_dir": "audio_chunks",  # 音频分段存储目录
+    "trans_chunks_dir": "trans_chunks",  # 转录分段临时存储目录
+    "transcripts_dir": "transcripts",    # 转录文本存放目录
+    "converted_audio": "converted.mp3"   # 转换后的MP3文件
+}
+```
+
+## 使用说明
+
+1. 安装依赖
+```bash
+pip install -r requirements.txt
+```
+
+2. 配置环境变量
+   - 创建 .env 文件
+   - 设置必要的API密钥和URL
+
+3. 运行脚本
 ```python
 from whisper_sample import transcribe_audio
 
-# 指定音频文件路径，可以是单个文件或文件夹
-audio_file_path = "path/to/your/audio.mp3"
-
-# 开始转录
-transcribe_audio(audio_file_path)
+# 处理单个文件或目录
+audio_path = "path/to/your/audio"
+transcribe_audio(audio_path)
 ```
+之后可在`transcripts`目录下找到转录后的文件。
 
-## 工作流程
+## 输出格式
 
-1. 检查音频文件大小
-2. 如果文件>25MB:
-   - 检查音频比特率
-   - 如果>128kbps，转换为低码率MP3
-   - 如果文件仍>25MB，进行分段处理
-3. 使用Whisper API进行转录
-4. 对分段转录结果进行时间戳调整（仅适用于字幕格式）
-5. 合并所有分段为最终文件
-6. 清理临时文件
-
-## 输出文件
-
-- `transcripts/*`: 转录完成的文件储存在 transcripts 目录下
-  - 文件扩展名根据 response_format 自动设置（.srt/.txt/.json/.vtt）
-- `audio_chunks/`: 音频分段临时目录
-- `trans_chunks/`: 转录分段临时目录
-- `converted.mp3`: 转换后的临时音频文件，转换完成后删除
+支持多种输出格式：
+- text: 纯文本格式，会进行智能分段
+- srt: 字幕格式，包含时间戳
+- vtt: 网页字幕格式
+- json: JSON格式的详细信息
+- verbose_json: 包含更多细节的JSON格式
 
 ## 注意事项
 
-- 确保系统已正确安装FFmpeg
-- 请确保OpenAI API密钥配置正确
-- 字幕时间戳调整功能仅在使用 srt 或 vtt 格式时有效
+1. 文件大小限制
+   - 原始文件超过25MB会自动转换
+   - 96kbps的MP3约可存储30分钟音频
+   - 55kbps的MP3约可存储1小时音频
+
+2. 文本处理功能
+   - 仅对 text 格式的输出进行处理
+   - 保持原文不变，不进行翻译
+   - 自动检查拼写和用词问题
+
+3. 依赖要求
+   - Python 3.6+
+   - ffmpeg（系统级依赖，需要单独安装）
+   - openai
+   - python-dotenv
+   - pydub
