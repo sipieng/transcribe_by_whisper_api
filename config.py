@@ -12,7 +12,7 @@ AI_CONFIG = {
 2. 根据内容逻辑进行合理分段；
 3. 不要给每个分段添加标题或者解释，直接输出分段内容；
 4. 保持原文不变，不要进行翻译，不要进行任何增加、删除或者修改，包括你认为可能是文章来源的那部分；
-5. 如果发现可能有拼写错误或者使用错误的用词，请指出并说明修改建议及依据。
+5. 如果发现可能有拼写错误或者使用错误的用词，请在底部指出并说明修改建议及依据。
 英文内容如下：
 """
 }
@@ -32,7 +32,7 @@ AUDIO_CONFIG = {
     "language": "en",                   # 音频语言，中文为"zh"
     "export_format": "mp3",             # 分段后的音频导出格式
     "mp3_bitrate": "96k",               # 大于128kbps的MP3转换的目标比特率
-    "response_format": "text"           # Whisper API的响应格式，可选值：srt, text, json, verbose_json, vtt
+    "response_format": "srt"            # Whisper API的响应格式，可选值：srt, text, json, verbose_json, vtt
 }
 
 # 输出配置

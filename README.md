@@ -27,11 +27,11 @@
 
 ### 环境变量配置（.env文件）
 ```
-# Whisper API配置
+# OpenAI Whisper API配置
 OPENAI_BASE_URL=your_whisper_api_url
 OPENAI_API_KEY=your_whisper_api_key
 
-# AI服务配置（用于处理text格式）
+# AI配置（当输出格式为`text`时，使用AI对整段文本进行智能分段）
 AI_BASE_URL=your_ai_service_url
 AI_API_KEY=your_ai_service_key
 ```
